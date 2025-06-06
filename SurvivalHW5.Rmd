@@ -1,0 +1,100 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-03-24"
+---
+
+```{r}
+library(survival)
+library(haven)
+library(dplyr)
+```
+
+```{r}
+data<-read_sas("/Users/jackielindstrom/Documents/675 Survival/kidney_ecd_1.sas7bdat")
+```
+
+```{r}
+head(data)
+```
+
+a) Fit a model which contains only factors known at the time of transplant (t = 0). List the factors that significantly predict death
+
+```{r}
+time<-pmin(data$time_to_death,data$time_to_censor)
+head(time)
+```
+
+
+```{r}
+#Making delta and Xi  (surv time)
+data$status <- ifelse(is.na(data$time_to_death), 0, 1)
+
+data$time <- c(0)
+
+for (i in 1:nrow(data)) {
+  if (is.na(data$time_to_death[i])) {
+    data$time[i] <- data$time_to_censor[i]  
+  } else {
+    data$time[i] <- data$time_to_death[i]  
+  }
+}
+```
+
+```{r}
+cox_model <- coxph(Surv(time, status==1) ~ age + male + diabetes + comorbid + ECD, data = data)
+
+summary(cox_model)
+```
+All factors significantly predict time to death because all factors have a p value of less than 0.05. 
+
+b) Interpret the ECD effect from the model from part (a) **ECD=1 for ECD kidney, ECD=0 for non ECD kidney
+
+"ECD kidneys increase death hazard by 13.373%.
+
+(Note: for a cox model, we have hazard=baselinehazard*exp(BZi). So B=log(hazard/basehazard, Note: not 113%)) 
+
+c) Fit a model with graft failure (GF) as a time-dependent covariate (Use document timedep.pdf)
+
+```{r}
+# Need to restructure data set with time dep
+data$GF_y_n<- ifelse(is.na(data$time_to_GF), 0, 1)
+```
+
+```{r}
+tdata <- tmerge(data1 = data, 
+                data2 = data, 
+                id = idnum, 
+                tstart = 0, 
+                tstop = data$time, 
+                death = event(time_to_death, status))
+
+surv_data <- tmerge(data1 = tdata, 
+                    data2 = data, 
+                    id = idnum, 
+                    GFevent = event(time_to_GF), # do they get GF after this point
+                    GF = tdc(time_to_GF, GF_y_n)) #up until this point NA until GF
+
+surv_data$GF[is.na(surv_data$GF)] <- 0
+```
+
+
+```{r}
+head(surv_data)
+```
+
+
+```{r}
+d_cox_model <- coxph(Surv(tstart, tstop, death==1) ~ age + GF + male + diabetes + comorbid + ECD, data = surv_data)
+summary(d_cox_model)
+```
+
+d) Interpret the hazard ratio for GF
+The coefficient is 0.515, and exp(coef)= 1.674.
+Individuals with GF have a 67.4% higher chance of dying compared to those without GF. 
+
+e) Compare the ECD hazard ratios from models (a) and (c). What does this tell
+you about the nature of the ECD effect?
+
+The ECD ratio is 0.9896 for model (c), but it is not statistically significant. Therefore we could say ECD does not have a significant effect on death after accounting for the graft failure, instead of how in part (a) we said ECD increased risk of death by 13.373%. Adding in the time dependent covariate graft failure GF results in the ECD effect on death hazard decreasing. 
+
