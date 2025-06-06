@@ -1,0 +1,125 @@
+---
+title: "SurvivalHW6"
+output: html_document
+date: "2025-04-08"
+---
+
+```{r}
+library(haven)
+library(survival)
+
+```
+
+```{r}
+data<-read_sas("/Users/jackielindstrom/Documents/675 Survival/asthma_1.sas7bdat")
+```
+
+```{r}
+head(data)
+```
+
+(a) Fit a model which assumes proportionality for all covariates. Code BWT as a continuous covariate. Which factors appear to significantly affect asthma incidence?
+
+```{r}
+data$totaltime<-as.numeric(as.Date("1999-12-31")-as.Date("1960-01-01"))
+                      
+data$time<-pmin(data$totaltime, data$dt_asthma, na.rm=TRUE)- data$dt_birth
+data$status<-ifelse(is.na(data$dt_asthma), 0, 1)
+
+cox_model <- coxph(Surv(time, status==1) ~ urban + bwt + resp_dist + sex, data = data)
+summary(cox_model)
+```
+
+Only resp_dist, bwt, and sexM are statistically significant and statistically affect asthma incidence. 
+
+
+(b) Repeat (a), but code BWT using an indicator for low birth weight (defined as
+weighing ≤2.5 kg). Compare the parameter estimates with those from (a) and
+comment on the similarities and/or differences.
+
+```{r}
+data$lowbwt<-ifelse((data$bwt>2.5), 0, 1)
+```
+
+```{r}
+bwtI_cox_model <- coxph(Surv(time, status==1) ~ urban + lowbwt + resp_dist + sex, data = data)
+summary(bwtI_cox_model)
+```
+
+For b, we find that low birthrate increases asthma hazard by 28.82%, and our finding is statistically significant. Part a we found birthrate decreases death hazard significantly by 8.7%. 
+
+(c) Suppose, for part (c) only, that RESP DIST was of no interest, except as an adjustment covariate. Suppose also that you have no knowledge (and no desire to learn) about the nature of the non-proportionality. Fit an appropriate model, and briefly defend your choice.
+
+```{r}
+c_cox_model <- coxph(Surv(time, status==1) ~ urban + lowbwt + sex + strata(resp_dist), data = data)
+summary(c_cox_model)
+```
+
+I chose to stratify on resp_dist. Since we are not interested in the resp_dist effects, and we don't want to make the strong assumption that the hazard functions are proportional, this allows for better retention of precision and accuracy and allows for more flexible covariate adjustment. 
+
+(d) Fit a model which assumes that the RESP DIST effect follows a year-specific step
+function. Interpret the RESP DIST effect, as estimated from this model.
+
+```{r}
+data2 <- survSplit(Surv(time, status) ~ ., data= data, cut=c(365, 2*365,3*365,4*365, 5*365, 6*365), episode= "tgroup", id="id")
+data2[1:7, c("id", "tstart", "time", "status", "tgroup", "sex", "lowbwt","urban", "resp_dist")]
+```
+
+```{r}
+d_cox_model <- coxph(Surv(tstart, time, status) ~ sex + lowbwt + urban + resp_dist:strata(tgroup), data=data2)
+
+summary(d_cox_model)
+```
+For people in group 1, in the first year, respiratory distress significantly increases asthma hazard by 150%, or you could say in the first year of resp distress, there is an asthma hazard ratio of 2.5 after adjusting for all other covariates. 
+
+For people in group 2, in the second year, respiratory distress increases asthma hazard by 29% after adjusting for all other covariates. (results are not statistically significant)
+
+For people in group 3, in the third year, respiratory distress increases asthma hazard by 52% after adjusting for all other covariates. (results are not statistically significant)
+
+For people in group 4, in the fourth year, respiratory distress decreases asthma hazard by 62% after adjusting for all other covariates. (results are not statistically significant)
+
+For people in group 5, in the fifth year, respiratory distress decreases asthma hazard by 2.058e-06 times after adjusting for all other covariates. (results are not statistically significant)
+
+
+(e) Plot the age-specific RESP DIST against the year mid-points. Describe the shape
+of the plot and its implications (if any) for modelling the RESP DIST effect.
+
+```{r}
+data3 <- data.frame(
+  year_midpoint = c(0.5, 1.5, 2.5, 3.5, 4.5),
+  coefficients = c(0.9182, 0.2575, 0.4187, -0.9538, -13.09)
+)
+
+plot(data3$year_midpoint, data3$coefficients, 
+     type= "b",
+     xlab = "Year Mid-point", 
+     ylab = "Age Specific RESP DIST", 
+     main = "Age Specific RESP_DIST vs Year Mid Points")
+```
+The plot shows us that the age specific RESP DIST effects increase the hazard of asthma when the year is lower, but this stops as the years go on. 
+
+(f) Fit a model wherein the RESP DIST regression coefficient is assumed to change
+linearly with age (scaled to years). Interpret your parameter estimates.
+
+```{r}
+data2$age_scaled<-data2$time
+  
+a_cox_model <- coxph(Surv(time, status) ~ sex + lowbwt + urban + resp_dist + tt(resp_dist), data = data, tt=function(x,t,...) x*(t/365))
+
+summary(a_cox_model)
+```
+Being male is significantly associated with having a 61.3% higher hazard ratio of asthma compared to being female, adjusted for all other covariates.
+Having low bwt is significantly associated with having a 28% higher hazard ratio of asthma compared to having high bwt, adjusted for all other covariates.
+Living in an urban environment decreases asthma hazard by 5.1% compared to not living in an urban environment (not statistically significant) adjusted for all other covariates.
+Resp distress significantly increases asthma hazard by 200% compared to not having resp distress, adjusted for all other covariates.
+The effect of resp distress significantly decreases 38%, for every one year increase in age, adjusted for all other covariates.
+
+(g) Based on the model in (f), estimate the age at which are children with and without
+RESP DIST have equal asthma hazard.
+
+log(hazard ratio) = 0=βresp+βresp:age*age ... solve for age
+```{r}
+age_equal<- -(1.10252/(-0.47199 ))
+print(paste("Age where children with and without RESP DIST have equal hazard ratio:", age_equal))
+```
+
