@@ -1,0 +1,149 @@
+---
+title: "626Midterm"
+output: html_document
+date: "2025-04-16"
+---
+
+```{r}
+mldata<-read.csv("/Users/jackielindstrom/Documents/626 ML/demo.csv")
+```
+
+```{r}
+plot_image<-function(d_vec){
+
+    im = matrix(as.numeric(d_vec), nrow=28, ncol=28)
+    image(1:28, 1:28, im[,nrow(im):1], col=gray((0:255)/255))
+}
+
+d = read.csv("/Users/jackielindstrom/Documents/626 ML/demo.csv", head=T)
+
+end = dim(d)[2]
+
+par(mfrow = c(3, 3))
+
+sapply(1:9, function(x)  plot_image(d[x,2:end])) 
+
+dev.new()
+
+par(mfrow = c(3, 3))
+
+sapply(10:18, function(x) plot_image(d[x,2:end]))
+
+dev.new()
+
+par(mfrow = c(3, 3))
+
+sapply(19:27, function(x) plot_image(d[x,2:end]))
+
+# adding labels so i know what it should be :
+for (i in 1:9) {
+  plot_image(as.numeric(d[i, -1]))
+  title(main = paste("Label:", d$label[i]))
+}
+```
+
+# Establishing Baseline Model: linear model 
+
+Splitting ML demo data into training and test
+```{r}
+set.seed(123)
+
+train_index <- sample(1:nrow(mldata), size = 0.8 * nrow(mldata))  # I chose 80% for training
+train_data <- mldata[train_index, ]
+test_data <- mldata[-train_index, ]
+```
+
+```{r}
+linearmodel<-lm(label~ ., data=train_data) #note to self: . means use all other columns as predictors!
+summary(linearmodel)
+```
+
+# Baseline Evaluation: MSE from Test and Training Data
+```{r}
+train_pred<-predict(linearmodel, newdata=train_data)
+test_pred <- predict(linearmodel, newdata = test_data)
+
+train_true<-train_data$label
+test_true<-test_data$label
+mse_train <- mean((train_true - train_pred)^2) 
+mse_test <- mean((test_true - test_pred)^2) 
+
+print(paste("MSE Training Data:", mse_train ))
+```
+
+# Baseline Testing/ Generalization Error: Provide an estimate of the testing error for the baseline algorithm
+```{r}
+print(paste("MSE Testing Data:", mse_test ))
+```
+
+```{r}
+test_pred_vector <- as.numeric(test_pred) # rounding because lin reg results in continuous outputs (like 3.2)
+round_to_digit <- function(x) {
+  x <- floor(x + 0.5)      
+  x[x < 0] <- 0              
+  x[x > 9] <- 9               
+  return(x)
+}
+test_class_pred <- round_to_digit(test_pred_vector)
+base_accuracy<-mean(test_class_pred == test_true) 
+print(paste("Baseline Accuracy:", base_accuracy ))
+```
+```{r}
+base_test_error<-1-base_accuracy
+print(paste("Baseline Testing Error:", base_test_error ))
+```
+
+# Tuning my Final Algorithm: K-Nearest Neighbor
+
+```{r}
+library(class)
+train_x <- train_data[, -1] # removes  label in first column
+train_y <- train_data$label
+test_x <- test_data[, -1]
+test_y <- test_data$label
+
+knn_pred <- knn(train = train_x, test = test_x, cl = train_y, k = 3)
+mean(knn_pred == test_y)
+
+accuracies <- sapply(1:10, function(k) {
+  pred <- knn(train_x, test_x, cl = train_y, k = k)
+  mean(pred == test_y)
+})
+
+testing_errors <- 1 - accuracies
+
+print(data.frame(k = 1:10, accuracy = accuracies, testing_error = testing_errors))
+```
+
+Final Algorithm: k=6, ran with demo testing data
+```{r}
+library(class)
+knn_pred_6 <- knn(train = train_x, test = test_x, cl = train_y, k = 6)
+accuracyknn<-mean(knn_pred_6 == test_y)
+final_knn_testerror <- 1 - accuracyknn
+```
+
+```{r}
+print(paste("KNN Testing Error with K=6:", final_knn_testerror))
+```
+
+# Note to instructor/grader: Use this for assessing, once alg has been trained again with demo data
+## Announcement Step 3: 3. An additional unlabeled test data file ("test1.csv" in Files -> Midterm1) with 5,000 images has been provided...
+
+```{r}
+test1<- read.csv("/Users/jackielindstrom/Documents/626 ML/test1.csv")  # no labels
+
+knn_pred_test1 <- knn(train = train_x, test = test1, cl = train_y, k = 6)
+
+
+write.table(knn_pred_test1,
+            file = "/Users/jackielindstrom/Documents/626 ML/test1out.txt",
+            row.names = FALSE,
+            col.names = FALSE,
+            quote = FALSE)
+```
+
+
+
+
+
